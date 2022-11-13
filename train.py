@@ -89,20 +89,20 @@ test_gen = data_gen.flow_from_directory(directory='training_data_final/test',
 
 
 # print(train_gen.class_indices)
-bro = []
-labels = train_gen.class_indices
-for i in labels.items:
-    bro.append(labels.items)
-print(bro)
+# from dic to array of labels
+labels = []
+labels_dic = train_gen.class_indices
 
-'''
+for i in labels_dic.items():
+    labels.append(i[0])
+
 
 def get_next_batch(generator):
   batch = next(generator)
 
   image = batch[0]
   target = batch[1]
-
+  print()
   print("(Input) image shape:", image.shape)
   print("Target shape:",target.shape)
 
@@ -113,13 +113,51 @@ def get_next_batch(generator):
   print()
   print("Categorical label:", target)
   print("Label:", target_idx)
-  print("Class name:", bro[target_idx])
+  print("Class name:", labels[target_idx])
   fig = plt.figure(figsize=(6, 4))
   plt.imshow(np.uint8(image))
 
   return batch
 
 
-_ = get_next_batch(train_gen)
+# Create some augmentation examples
+# Get sample image
+image = next(train_gen)[0][4]
 
-'''
+# Create an instance of ImageDataGenerator for each transformation
+rot_gen = tf.keras.preprocessing.image.ImageDataGenerator(rotation_range=30)
+shift_gen = tf.keras.preprocessing.image.ImageDataGenerator(width_shift_range=50)
+zoom_gen = tf.keras.preprocessing.image.ImageDataGenerator(zoom_range=0.3)
+flip_gen = tf.keras.preprocessing.image.ImageDataGenerator(horizontal_flip=True)
+
+# Get random transformations
+rot_t = rot_gen.get_random_transform(img_shape=(256, 256), seed=seed)
+print('Rotation:', rot_t, '\n')
+shift_t = shift_gen.get_random_transform(img_shape=(256, 256), seed=seed)
+print('Shift:', shift_t, '\n')
+zoom_t = zoom_gen.get_random_transform(img_shape=(256, 256), seed=seed)
+print('Zoom:', zoom_t, '\n')
+flip_t = flip_gen.get_random_transform(img_shape=(256, 256), seed=seed)
+print('Flip:', flip_t, '\n')
+
+# Apply the transformation
+gen = tf.keras.preprocessing.image.ImageDataGenerator(fill_mode='constant', cval=0.)
+rotated = gen.apply_transform(image, rot_t)
+shifted = gen.apply_transform(image, shift_t) 
+zoomed = gen.apply_transform(image, zoom_t) 
+flipped = gen.apply_transform(image, flip_t)  
+
+# Plot original and augmented images
+fig, ax = plt.subplots(1, 5, figsize=(15, 45))
+ax[0].imshow(np.uint8(image))
+ax[0].set_title('Original')
+ax[1].imshow(np.uint8(rotated))
+ax[1].set_title('Rotated')
+ax[2].imshow(np.uint8(shifted))
+ax[2].set_title('Shifted')
+ax[3].imshow(np.uint8(zoomed))
+ax[3].set_title('Zoomed')
+ax[4].imshow(np.uint8(flipped))
+ax[4].set_title('Flipped')
+
+
