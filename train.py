@@ -2,6 +2,7 @@ import os
 import random
 import time
 import warnings
+import utils
 
 
 import splitfolders
@@ -15,6 +16,13 @@ from PIL import Image
 from sklearn.datasets import load_boston
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
+from tensorflow.keras.applications.vgg16 import preprocess_input
+
+
+
+# Hide GPU from visible devices
+#tf.config.set_visible_devices([], 'GPU')
+#tf.debugging.set_log_device_placement(True)
 
 
 image_set = []
@@ -34,130 +42,154 @@ np.random.seed(seed)
 tf.random.set_seed(seed)
 tf.compat.v1.set_random_seed(seed)
 
-'''
 
-for dir in os.listdir('training_data_final'):
-    for file in os.listdir('training_data_final/'+dir):
-        image = Image.open('training_data_final/'+dir+'/'+file).convert('L')
-        print("Original image shape: ", image.size)
-        print("Resized image shape: ", image.size)
-        fig = plt.figure(figsize=(8, 8))
-        print(file)
-        ##plt.imshow(image)
-        ##plt.show()
-        print(dir)
-        label_set.append(dir)
-        image_set.append(np.array(image, dtype=np.float32))
-
-image_set , label_set = shuffle(image_set,label_set)
-image_set = image_set/255
-'''
 # Recreate folders division every time
+'''
+input_folder = "training_data_final"
+output = "training_data_final"
+splitfolders.ratio(input_folder, output=output, seed=seed, ratio=(.8, .1, .1)) 
+'''
 
-##input_folder = "training_data_final"
-##output = "training_data_final"
-##splitfolders.ratio(input_folder, output=output, seed=seed, ratio=(.8, .1, .1)) 
+train_dataset = tf.keras.utils.image_dataset_from_directory('training_data_final/train',
+                                                            shuffle=True,
+                                                            batch_size=8,
+                                                            label_mode='categorical',
+                                                            image_size=(256,256))
 
+validation_dataset = tf.keras.utils.image_dataset_from_directory('training_data_final/val',
+                                                                 shuffle=True,
+                                                                 batch_size=8,
+                                                                 label_mode='categorical',
+                                                                 image_size=(256,256))
 
-data_gen = tf.keras.preprocessing.image.ImageDataGenerator(rescale=1./255.)
-train_gen = data_gen.flow_from_directory(directory='training_data_final/train',
-                                               target_size=(256,256),
-                                               color_mode='rgb',
-                                               classes=None, # can be set to labels
-                                               class_mode='categorical',
-                                               batch_size=8,
-                                               shuffle=True,
-                                               seed=seed)
-
-val_gen = data_gen.flow_from_directory(directory='training_data_final/val',
-                                               target_size=(256,256),
-                                               color_mode='rgb',
-                                               classes=None, # can be set to labels
-                                               class_mode='categorical',
-                                               batch_size=8,
-                                               shuffle=True,
-                                               seed=seed)
-
-test_gen = data_gen.flow_from_directory(directory='training_data_final/test',
-                                               target_size=(256,256),
-                                               color_mode='rgb',
-                                               classes=None, # can be set to labels
-                                               class_mode='categorical',
-                                               batch_size=8,
-                                               shuffle=True,
-                                               seed=seed)
+test_dataset = tf.keras.utils.image_dataset_from_directory('training_data_final/test',
+                                                                 shuffle=True,
+                                                                 label_mode='categorical',
+                                                                 batch_size=8,
+                                                                 image_size=(256,256))
 
 
-# print(train_gen.class_indices)
-# from dic to array of labels
-labels = []
-labels_dic = train_gen.class_indices
+AUTOTUNE = tf.data.AUTOTUNE
 
-for i in labels_dic.items():
-    labels.append(i[0])
+train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
+validation_dataset = validation_dataset.prefetch(buffer_size=AUTOTUNE)
+test_dataset = test_dataset.prefetch(buffer_size=AUTOTUNE)
+
+data_augmentation = tf.keras.Sequential([
+  tf.keras.layers.RandomFlip('horizontal'),
+  tf.keras.layers.RandomRotation(0.2),
+])
+
+preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
+rescale = tf.keras.layers.Rescaling(1./127.5, offset=-1)
+
+IMG_SHAPE = (256,256) + (3,)
+
+base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
+                                               include_top=False,
+                                               weights='imagenet')
+                                               
+supernet = tfk.applications.VGG16(
+    include_top=False,
+    weights="imagenet",
+    input_shape=IMG_SHAPE
+)
+
+base_model.trainable = False
+supernet.trainable = False
+
+global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
+prediction_layer = tfkl.Dense(
+    8, 
+    activation='sigmoid')
+
+inputs = tf.keras.Input(shape=(256, 256, 3))
+x = data_augmentation(inputs)
+x = preprocess_input(x)
+x = base_model(x,training = False)
+x = tfkl.Flatten(name='Flattening')(x)
+x = tfkl.Dropout(0.3, seed=seed)(x)
+x = tfkl.Dense(
+    1024, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+x = tfkl.Dense(
+    512, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+x = tfkl.Dense(
+    256, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+x = tfkl.Dense(
+    128, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+x = tfkl.Dense(
+    64, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+x = tfkl.Dense(
+    32, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+x = tfkl.Dense(
+    16, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+outputs = tfkl.Dense(
+    8, 
+    activation='softmax',
+    kernel_initializer = tfk.initializers.GlorotUniform(seed))(x)
 
 
-def get_next_batch(generator):
-  batch = next(generator)
+model = tf.keras.Model(inputs, outputs)
 
-  image = batch[0]
-  target = batch[1]
-  print()
-  print("(Input) image shape:", image.shape)
-  print("Target shape:",target.shape)
-
-  # Visualize only the first sample
-  image = image[0]
-  target = target[0]
-  target_idx = np.argmax(target)
-  print()
-  print("Categorical label:", target)
-  print("Label:", target_idx)
-  print("Class name:", labels[target_idx])
-  fig = plt.figure(figsize=(6, 4))
-  plt.imshow(np.uint8(image))
-
-  return batch
+base_learning_rate = 0.0001
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate/10),
+              loss=tfk.losses.CategoricalCrossentropy(),
+              metrics=['accuracy'])
 
 
-# Create some augmentation examples
-# Get sample image
-image = next(train_gen)[0][4]
+initial_epochs = 50
 
-# Create an instance of ImageDataGenerator for each transformation
-rot_gen = tf.keras.preprocessing.image.ImageDataGenerator(rotation_range=30)
-shift_gen = tf.keras.preprocessing.image.ImageDataGenerator(width_shift_range=50)
-zoom_gen = tf.keras.preprocessing.image.ImageDataGenerator(zoom_range=0.3)
-flip_gen = tf.keras.preprocessing.image.ImageDataGenerator(horizontal_flip=True)
+model.summary()
 
-# Get random transformations
-rot_t = rot_gen.get_random_transform(img_shape=(256, 256), seed=seed)
-print('Rotation:', rot_t, '\n')
-shift_t = shift_gen.get_random_transform(img_shape=(256, 256), seed=seed)
-print('Shift:', shift_t, '\n')
-zoom_t = zoom_gen.get_random_transform(img_shape=(256, 256), seed=seed)
-print('Zoom:', zoom_t, '\n')
-flip_t = flip_gen.get_random_transform(img_shape=(256, 256), seed=seed)
-print('Flip:', flip_t, '\n')
+loss0, accuracy0 = model.evaluate(validation_dataset)
+print("initial loss: {:.2f}".format(loss0))
+print("initial accuracy: {:.2f}".format(accuracy0))
 
-# Apply the transformation
-gen = tf.keras.preprocessing.image.ImageDataGenerator(fill_mode='constant', cval=0.)
-rotated = gen.apply_transform(image, rot_t)
-shifted = gen.apply_transform(image, shift_t) 
-zoomed = gen.apply_transform(image, zoom_t) 
-flipped = gen.apply_transform(image, flip_t)  
+history = model.fit(train_dataset,
+                    epochs=initial_epochs,
+                    validation_data=validation_dataset)
 
-# Plot original and augmented images
-fig, ax = plt.subplots(1, 5, figsize=(15, 45))
-ax[0].imshow(np.uint8(image))
-ax[0].set_title('Original')
-ax[1].imshow(np.uint8(rotated))
-ax[1].set_title('Rotated')
-ax[2].imshow(np.uint8(shifted))
-ax[2].set_title('Shifted')
-ax[3].imshow(np.uint8(zoomed))
-ax[3].set_title('Zoomed')
-ax[4].imshow(np.uint8(flipped))
-ax[4].set_title('Flipped')
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+
+loss, accuracy = model.evaluate(test_dataset)
+print('Test accuracy :', accuracy)
+
+
+plt.figure(figsize=(8, 8))
+plt.subplot(2, 1, 1)
+plt.plot(acc, label='Training Accuracy')
+plt.plot(val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.ylabel('Accuracy')
+plt.ylim([min(plt.ylim()),1])
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(2, 1, 2)
+plt.plot(loss, label='Training Loss')
+plt.plot(val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.ylabel('Cross Entropy')
+plt.ylim([0,1.0])
+plt.title('Training and Validation Loss')
+plt.xlabel('epoch')
+plt.show()
 
 
