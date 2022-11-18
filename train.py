@@ -1,8 +1,6 @@
 import os
 import random
-import time
 import warnings
-import utils
 
 
 import splitfolders
@@ -54,19 +52,19 @@ train_dataset = tf.keras.utils.image_dataset_from_directory('training_data_final
                                                             shuffle=True,
                                                             batch_size=8,
                                                             label_mode='categorical',
-                                                            image_size=(256,256))
+                                                            image_size=(96,96))
 
 validation_dataset = tf.keras.utils.image_dataset_from_directory('training_data_final/val',
                                                                  shuffle=True,
                                                                  batch_size=8,
                                                                  label_mode='categorical',
-                                                                 image_size=(256,256))
+                                                                 image_size=(96,96))
 
 test_dataset = tf.keras.utils.image_dataset_from_directory('training_data_final/test',
                                                                  shuffle=True,
                                                                  label_mode='categorical',
                                                                  batch_size=8,
-                                                                 image_size=(256,256))
+                                                                 image_size=(96,96))
 
 
 AUTOTUNE = tf.data.AUTOTUNE
@@ -78,12 +76,13 @@ test_dataset = test_dataset.prefetch(buffer_size=AUTOTUNE)
 data_augmentation = tf.keras.Sequential([
   tf.keras.layers.RandomFlip('horizontal'),
   tf.keras.layers.RandomRotation(0.2),
+  tf.keras.layers.RandomBrightness(0.1),
 ])
 
-preprocess_input = tf.keras.applications.mobilenet_v2.preprocess_input
+preprocess_input2 = tf.keras.applications.mobilenet_v2.preprocess_input
 rescale = tf.keras.layers.Rescaling(1./127.5, offset=-1)
 
-IMG_SHAPE = (256,256) + (3,)
+IMG_SHAPE = (96,96) + (3,)
 
 base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
                                                include_top=False,
@@ -95,6 +94,8 @@ supernet = tfk.applications.VGG16(
     input_shape=IMG_SHAPE
 )
 
+
+
 base_model.trainable = False
 supernet.trainable = False
 
@@ -103,12 +104,16 @@ prediction_layer = tfkl.Dense(
     8, 
     activation='sigmoid')
 
-inputs = tf.keras.Input(shape=(256, 256, 3))
+inputs = tf.keras.Input(shape=(96, 96, 3))
 x = data_augmentation(inputs)
 x = preprocess_input(x)
-x = base_model(x,training = False)
-x = tfkl.Flatten(name='Flattening')(x)
+x = supernet(x,training = False)
 x = tfkl.Dropout(0.3, seed=seed)(x)
+x = global_average_layer(x)
+x = tfkl.Dense(
+    2048, 
+    activation='relu',
+    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
 x = tfkl.Dense(
     1024, 
     activation='relu',
@@ -121,22 +126,6 @@ x = tfkl.Dense(
     256, 
     activation='relu',
     kernel_initializer = tfk.initializers.HeUniform(seed))(x)
-x = tfkl.Dense(
-    128, 
-    activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
-x = tfkl.Dense(
-    64, 
-    activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
-x = tfkl.Dense(
-    32, 
-    activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
-x = tfkl.Dense(
-    16, 
-    activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
 outputs = tfkl.Dense(
     8, 
     activation='softmax',
@@ -146,12 +135,12 @@ outputs = tfkl.Dense(
 model = tf.keras.Model(inputs, outputs)
 
 base_learning_rate = 0.0001
-model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate/10),
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate),
               loss=tfk.losses.CategoricalCrossentropy(),
               metrics=['accuracy'])
 
 
-initial_epochs = 50
+initial_epochs = 100
 
 model.summary()
 
@@ -192,4 +181,63 @@ plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
 plt.show()
 
+## FINE TUNING
 
+supernet.trainable = True
+
+# Let's take a look to see how many layers are in the base model
+print("Number of layers in the base model: ", len(supernet.layers))
+
+# Fine-tune from this layer onwards
+fine_tune_at = 100
+
+# Freeze all the layers before the `fine_tune_at` layer
+for layer in supernet.layers[:fine_tune_at]:
+  layer.trainable = False
+
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate/10),
+              loss=tfk.losses.CategoricalCrossentropy(),
+              metrics=['accuracy'])
+
+model.summary()
+
+fine_tune_epochs = 100
+total_epochs =  initial_epochs + fine_tune_epochs
+
+history_fine = model.fit(train_dataset,
+                         epochs=total_epochs,
+                         initial_epoch=history.epoch[-1],
+                         validation_data=validation_dataset)
+
+acc = history_fine.history['accuracy']
+val_acc = history_fine.history['val_accuracy']
+
+loss = history_fine.history['loss']
+val_loss = history_fine.history['val_loss']
+
+plt.figure(figsize=(8, 8))
+plt.subplot(2, 1, 1)
+plt.plot(acc, label='Training Accuracy')
+plt.plot(val_acc, label='Validation Accuracy')
+plt.ylim([0.8, 1])
+plt.plot([initial_epochs-1,initial_epochs-1],
+          plt.ylim(), label='Start Fine Tuning')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+plt.subplot(2, 1, 2)
+plt.plot(loss, label='Training Loss')
+plt.plot(val_loss, label='Validation Loss')
+plt.ylim([0, 1.0])
+plt.plot([initial_epochs-1,initial_epochs-1],
+         plt.ylim(), label='Start Fine Tuning')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+plt.xlabel('epoch')
+plt.show()
+
+loss, accuracy = model.evaluate(test_dataset)
+print('Test accuracy :', accuracy)
+
+
+model.save('')
