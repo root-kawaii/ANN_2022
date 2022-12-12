@@ -9,6 +9,11 @@ I also tried to do a mix between 1D and BILSTM but didn't work very well
 
 # TODO
 
+
+Ensamble, train many models and ensamble (pick best model for each class)
+Categorical Accuracy
+ResNet, residuals 
+GRU (another RNN)
 MinMax scaling and similar things
 Normalization on DATASET
 Dataaugmentation 

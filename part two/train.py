@@ -53,7 +53,7 @@ history = model.fit(
     x=training,
     y=training_label,
     batch_size=8,
-    epochs=100,
+    epochs=30,
     validation_split=.2,
     callbacks=[
         tfk.callbacks.EarlyStopping(
@@ -95,7 +95,7 @@ plt.legend()
 plt.grid(alpha=.3)
 plt.show()
 
-model.save('on_a_gang')
+model.save('on_a_gang_model')
 
 predictions = model.predict(test)
 predictions.shape
