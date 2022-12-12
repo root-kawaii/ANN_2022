@@ -3,7 +3,6 @@ import random
 import warnings
 
 
-import splitfolders
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,7 +13,6 @@ from PIL import Image
 from sklearn.datasets import load_boston
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-from tensorflow.keras.applications.vgg16 import preprocess_input
 
 
 
@@ -73,59 +71,52 @@ train_dataset = train_dataset.prefetch(buffer_size=AUTOTUNE)
 validation_dataset = validation_dataset.prefetch(buffer_size=AUTOTUNE)
 test_dataset = test_dataset.prefetch(buffer_size=AUTOTUNE)
 
-data_augmentation = tf.keras.Sequential([
-  tf.keras.layers.RandomFlip('horizontal'),
-  tf.keras.layers.RandomRotation(0.2),
-  tf.keras.layers.RandomBrightness(0.1),
+data_augmentation = tfk.Sequential([
+  tfkl.RandomFlip('horizontal'),
+  tfkl.RandomFlip('vertical'),
+  tfkl.RandomRotation(0.15),
+  tfkl.RandomHeight(0.2),
+  tfkl.RandomWidth(0.2),
+  tfkl.RandomZoom(0.15),
+  tfkl.RandomContrast(factor=0.1),
+  tfkl.GaussianNoise(0.1)
 ])
-
-preprocess_input2 = tf.keras.applications.mobilenet_v2.preprocess_input
-rescale = tf.keras.layers.Rescaling(1./127.5, offset=-1)
 
 IMG_SHAPE = (96,96) + (3,)
 
-base_model = tf.keras.applications.MobileNetV2(input_shape=IMG_SHAPE,
-                                               include_top=False,
-                                               weights='imagenet')
-                                               
-supernet = tfk.applications.VGG16(
+supernet = tf.keras.applications.convnext.ConvNeXtBase(
     include_top=False,
     weights="imagenet",
     input_shape=IMG_SHAPE
 )
 
 
-
-base_model.trainable = False
 supernet.trainable = False
 
+class1 = 2829/(8*148)
+class2 = 2829/(8*425)
+class3 = 2829/(8*412)
+class4 = 2829/(8*408)
+class5 = 2829/(8*424)
+class6 = 2829/(8*177)
+class7 = 2829/(8*429)
+class8 = 2829/(8*406)
+
+weights = {0: class1, 1: class2, 2: class3, 3: class4, 4: class5, 5: class6, 6: class7, 7: class8}
+
 global_average_layer = tf.keras.layers.GlobalAveragePooling2D()
-prediction_layer = tfkl.Dense(
-    8, 
-    activation='sigmoid')
 
 inputs = tf.keras.Input(shape=(96, 96, 3))
 x = data_augmentation(inputs)
-x = preprocess_input(x)
+x = tf.keras.applications.convnext.preprocess_input(x)
 x = supernet(x,training = False)
-x = tfkl.Dropout(0.3, seed=seed)(x)
 x = global_average_layer(x)
-x = tfkl.Dense(
-    2048, 
-    activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
-x = tfkl.Dense(
-    1024, 
-    activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
-x = tfkl.Dense(
-    512, 
-    activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+x = tfkl.Dropout(0.3, seed=seed)(x)
 x = tfkl.Dense(
     256, 
     activation='relu',
-    kernel_initializer = tfk.initializers.HeUniform(seed))(x)
+    kernel_initializer = tfk.initializers.HeUniform(seed),)(x)
+x = tfkl.Dropout(0.3, seed=seed)(x)
 outputs = tfkl.Dense(
     8, 
     activation='softmax',
@@ -134,13 +125,13 @@ outputs = tfkl.Dense(
 
 model = tf.keras.Model(inputs, outputs)
 
-base_learning_rate = 0.0001
+base_learning_rate = 0.003
 model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate),
               loss=tfk.losses.CategoricalCrossentropy(),
               metrics=['accuracy'])
 
 
-initial_epochs = 100
+initial_epochs = 20
 
 model.summary()
 
@@ -150,7 +141,8 @@ print("initial accuracy: {:.2f}".format(accuracy0))
 
 history = model.fit(train_dataset,
                     epochs=initial_epochs,
-                    validation_data=validation_dataset)
+                    validation_data=validation_dataset,
+                    class_weight=weights)
 
 acc = history.history['accuracy']
 val_acc = history.history['val_accuracy']
@@ -181,6 +173,8 @@ plt.title('Training and Validation Loss')
 plt.xlabel('epoch')
 plt.show()
 
+
+
 ## FINE TUNING
 
 supernet.trainable = True
@@ -189,25 +183,26 @@ supernet.trainable = True
 print("Number of layers in the base model: ", len(supernet.layers))
 
 # Fine-tune from this layer onwards
-fine_tune_at = 100
+fine_tune_at = 0
 
 # Freeze all the layers before the `fine_tune_at` layer
 for layer in supernet.layers[:fine_tune_at]:
   layer.trainable = False
 
-model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=base_learning_rate/10),
+model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-5),
               loss=tfk.losses.CategoricalCrossentropy(),
               metrics=['accuracy'])
 
 model.summary()
 
-fine_tune_epochs = 100
+fine_tune_epochs = 70
 total_epochs =  initial_epochs + fine_tune_epochs
 
 history_fine = model.fit(train_dataset,
                          epochs=total_epochs,
                          initial_epoch=history.epoch[-1],
-                         validation_data=validation_dataset)
+                         validation_data=validation_dataset,
+                         class_weight=weights)
 
 acc = history_fine.history['accuracy']
 val_acc = history_fine.history['val_accuracy']
@@ -219,7 +214,7 @@ plt.figure(figsize=(8, 8))
 plt.subplot(2, 1, 1)
 plt.plot(acc, label='Training Accuracy')
 plt.plot(val_acc, label='Validation Accuracy')
-plt.ylim([0.8, 1])
+plt.ylim([0.6, 1])
 plt.plot([initial_epochs-1,initial_epochs-1],
           plt.ylim(), label='Start Fine Tuning')
 plt.legend(loc='lower right')
@@ -240,4 +235,6 @@ loss, accuracy = model.evaluate(test_dataset)
 print('Test accuracy :', accuracy)
 
 
-model.save('')
+model.save('b2')
+
+#model.save("convNext")
