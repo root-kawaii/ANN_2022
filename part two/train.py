@@ -11,7 +11,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from utils import unison_shuffled_copies
-from model import build_1DCNN_classifier, build_BiLSTM_classifier
+from model import build_1DCNN_classifier, build_BiLSTM_classifier, build_model_RESNET
 
 
 plt.rc('font', size=16)
@@ -44,22 +44,25 @@ training_label, test_label = label[:
 # model = build_1DCNN_classifier(
 #    (36, 6), 12, seed)
 
-model = build_BiLSTM_classifier(
-    (36, 6), 12, seed)
+# model = build_BiLSTM_classifier(
+#    (36, 6), 12, seed)
+
+model = build_model_RESNET(
+    (36, 6), 12)
 
 model.summary()
 
 history = model.fit(
     x=training,
     y=training_label,
-    batch_size=8,
-    epochs=30,
+    batch_size=64,
+    epochs=100,
     validation_split=.2,
     callbacks=[
         tfk.callbacks.EarlyStopping(
-            monitor='val_accuracy', mode='max', patience=25, restore_best_weights=True),
+            monitor='val_accuracy', mode='max', patience=250, restore_best_weights=True),
         tfk.callbacks.ReduceLROnPlateau(
-            monitor='val_accuracy', mode='max', patience=25, factor=0.5, min_lr=1e-5)
+            monitor='val_accuracy', mode='max', patience=250, factor=0.5, min_lr=1e-5)
     ]
 ).history
 
