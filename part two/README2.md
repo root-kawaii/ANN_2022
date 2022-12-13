@@ -2,8 +2,10 @@
 # We tried
 
 1D_CNN
-Bi-LSTM
+Bi-LSTM best so far
 LSTM
+GRU
+RESNET
 
 I also tried to do a mix between 1D and BILSTM but didn't work very well
 
@@ -12,11 +14,11 @@ I also tried to do a mix between 1D and BILSTM but didn't work very well
 
 Ensamble, train many models and ensamble (pick best model for each class)
 Categorical Accuracy
-ResNet, residuals 
-GRU (another RNN)
-MinMax scaling and similar things
+#ResNet, residuals 
+#GRU (another RNN)
+#MinMax scaling and similar things
 Normalization on DATASET
-Dataaugmentation 
+Data augmentation 
 Surely much more but also considering we have less days
 
 # RESULTS

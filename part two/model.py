@@ -16,6 +16,26 @@ tfk = tf.keras
 tfkl = tf.keras.layers
 
 
+def build_GRU_classifier(input_shape, classes, seed):
+    model = tfk.Sequential(name="GRU-Model")  # Model
+    # Input Layer - need to speicfy the shape of inputs
+    input_layer = tfkl.Input(shape=(input_shape), name='Input-Layer')
+    x = tfkl.GRU(units=8, activation='tanh',
+                 recurrent_activation='sigmoid', stateful=False, return_sequences=True)(input_layer)  # Encoder Layer
+    # Repeat Vector
+    x = tfkl.GRU(units=8, activation='tanh',
+                 recurrent_activation='sigmoid', stateful=False)(x)  # Decoder Layer
+    x = tfkl.Dropout(.5, seed=seed)(x)
+    # Classifier
+    x = tfkl.Dense(16, activation='relu')(x)
+    output_layer = tfkl.Dense(classes, activation='softmax')(x)
+    model = tfk.Model(inputs=input_layer, outputs=output_layer, name='model')
+
+    model.compile(loss=tfk.losses.CategoricalCrossentropy(),
+                  optimizer='adam', metrics=['accuracy'])
+    return model
+
+
 def build_1DCNN_classifier(input_shape, classes, seed):
     # Build the neural network layer by layer
     input_layer = tfkl.Input(shape=input_shape, name='Input')
@@ -48,8 +68,8 @@ def build_BiLSTM_classifier(input_shape, classes, seed):
 
     # Feature extractor
     bilstm = tfkl.Bidirectional(
-        tfkl.LSTM(64, return_sequences=True))(input_layer)
-    bilstm = tfkl.Bidirectional(tfkl.LSTM(64))(bilstm)
+        tfkl.LSTM(128, return_sequences=True))(input_layer)
+    bilstm = tfkl.Bidirectional(tfkl.LSTM(128))(bilstm)
     dropout = tfkl.Dropout(.5, seed=seed)(bilstm)
 
     # Classifier
