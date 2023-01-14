@@ -1,5 +1,11 @@
 # Artificial Neural Networks and Deep Learning Challenges 2022
 
+## Members of the team
+
+Matteo Regge (root-kawaii)
+Ossama El Oukili (ossama-eloukili)
+Valentina Abbattista (tinyabba)
+
 ## Challenge 1
 
 In this challenge we were required to classify species of plants, which are divided into categories according to the species of the plant to which they belong. Being a classification problem, given an image, the goal is to predict the correct class label.
