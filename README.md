@@ -3,8 +3,11 @@
 ## Members of the team
 
 Matteo Regge (root-kawaii)
+
 Ossama El Oukili (ossama-eloukili)
+
 Valentina Abbattista (tinyabba)
+
 
 ## Challenge 1
 
